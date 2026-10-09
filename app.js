@@ -167,7 +167,7 @@
         <button class="sbtn unseen" id="btnUnseen" aria-label="Haven't seen">?</button>
         <button class="sbtn like" id="btnLike" aria-label="Like">♥</button>
       </div>
-      <div class="swipe-hint muted">drag &larr; nope &nbsp;·&nbsp; drag &uarr; haven't seen &nbsp;·&nbsp; drag &rarr; like</div>`;
+      <div class="swipe-hint muted">drag &larr; nope &nbsp;·&nbsp; &uarr; haven't seen &nbsp;·&nbsp; &rarr; like &nbsp;·&nbsp; tap synopsis to expand</div>`;
     const card = document.getElementById("swipeCard");
     document.getElementById("btnNope").onclick = () => rate(DISLIKE);
     document.getElementById("btnLike").onclick = () => rate(LIKE);
@@ -194,6 +194,11 @@
           const ov = document.createElement("div");
           ov.className = "swipe-overview";
           ov.textContent = info.overview;
+          ov.title = "Tap to expand";
+          ov.addEventListener("click", () => {
+            if (card.dataset.dragged === "1") return; // was a swipe, not a tap
+            ov.classList.toggle("expanded");
+          });
           infoBox.appendChild(ov);
         }
       }
@@ -234,7 +239,7 @@
     let sx = 0, sy = 0, dx = 0, dy = 0, dragging = false;
     const like = card.querySelector(".stamp.like"), nope = card.querySelector(".stamp.nope"),
           unseen = card.querySelector(".stamp.unseen");
-    card.addEventListener("pointerdown", e => { dragging = true; sx = e.clientX; sy = e.clientY; card.setPointerCapture(e.pointerId); });
+    card.addEventListener("pointerdown", e => { dragging = true; sx = e.clientX; sy = e.clientY; card.dataset.dragged = "0"; card.setPointerCapture(e.pointerId); });
     card.addEventListener("pointermove", e => {
       if (!dragging) return;
       dx = e.clientX - sx; dy = e.clientY - sy;
@@ -245,6 +250,7 @@
     });
     const end = () => {
       if (!dragging) return; dragging = false;
+      card.dataset.dragged = (Math.abs(dx) > 12 || Math.abs(dy) > 12) ? "1" : "0";
       if (dy < -90 && -dy > Math.abs(dx)) markUnseen();
       else if (dx > 90) rate(LIKE);
       else if (dx < -90) rate(DISLIKE);
