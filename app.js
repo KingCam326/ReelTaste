@@ -307,10 +307,10 @@
       <div class="row"><input id="newName" placeholder="New username" maxlength="24" />
       <button class="btn primary" id="createBtn">Create</button></div>
       ${stats}
-      <h3>Posters &amp; synopses (optional)</h3>
-      <p class="muted small">Paste a free TMDB API key to show real posters and synopses on cards. Get one at <b>themoviedb.org/settings/api</b> (free account, takes ~2 minutes).</p>
-      <div class="row"><input id="tmdbKey" placeholder="TMDB API key" maxlength="64" value="${escapeHTML(TMDB.getKey())}" />
-      <button class="btn sm primary" id="saveKeyBtn">Save key</button></div>
+      <h3>Posters &amp; synopses</h3>
+      <p class="muted small">Posters load automatically — no setup needed. Only enter your own TMDB key below if they ever stop loading.</p>
+      <div class="row"><input id="tmdbKey" placeholder="Optional: your own TMDB key" maxlength="64" value="${escapeHTML(TMDB.userKey())}" />
+      <button class="btn sm" id="saveKeyBtn">Save</button></div>
       <div id="keyMsg" class="muted small"></div>
       <h3>Data</h3>
       <div class="row"><button class="btn sm" id="exportBtn">Export ratings (JSON)</button>
@@ -321,9 +321,9 @@
     };
     document.getElementById("saveKeyBtn").onclick = () => {
       TMDB.setKey(document.getElementById("tmdbKey").value);
-      document.getElementById("keyMsg").textContent = TMDB.hasKey()
-        ? "Saved ✓ — posters will load on cards from here on."
-        : "Key cleared — back to generated card art.";
+      document.getElementById("keyMsg").textContent = TMDB.userKey()
+        ? "Saved ✓ — using your personal key."
+        : "Cleared — using the built-in key.";
     };
     el.querySelectorAll("[data-switch]").forEach(b => b.onclick = () => { store.active = b.dataset.switch; saveStore(); updateHeader(); buildDeck(); renderProfile(); });
     el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {

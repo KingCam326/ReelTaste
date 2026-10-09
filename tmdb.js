@@ -8,6 +8,10 @@ const TMDB = (function () {
   const IMG = "https://image.tmdb.org/t/p/";
   const CACHE_KEY = "mmr_tmdb_cache";
   const KEY_KEY = "mmr_tmdb_key";
+  // Built-in shared key so users never have to enter one. If it ever stops
+  // working, a personal key can be set in Profile settings (stored locally,
+  // overrides this one). Note: this key is visible in the public repo source.
+  const BUILT_IN_KEY = "bbefc409fba6d4169268805515795649";
   let cache = {};
   try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) { cache = {}; }
 
@@ -19,8 +23,9 @@ const TMDB = (function () {
       localStorage.setItem(CACHE_KEY, JSON.stringify(slim));
     } catch (e) { /* storage full: keep going without cache */ }
   }
-  function getKey() { try { return localStorage.getItem(KEY_KEY) || ""; } catch (e) { return ""; } }
+  function userKey() { try { return localStorage.getItem(KEY_KEY) || ""; } catch (e) { return ""; } }
   function setKey(k) { try { localStorage.setItem(KEY_KEY, (k || "").trim()); } catch (e) {} }
+  function getKey() { return userKey() || BUILT_IN_KEY; }
 
   async function api(path) {
     const key = getKey();
@@ -59,5 +64,5 @@ const TMDB = (function () {
     return out;
   }
 
-  return { getKey, setKey, lookup, hasKey: function () { return !!getKey(); } };
+  return { getKey, setKey, userKey, lookup, hasKey: function () { return true; } };
 })();
