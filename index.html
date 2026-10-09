@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0d0d14" />
+<title>ReelTaste — Movie & TV Recommendations</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header>
+  <div class="logo">🎬 ReelTaste</div>
+  <button id="profileChip" class="chipbtn">👤 Guest</button>
+</header>
+
+<main>
+  <section id="screen-discover" class="screen"></section>
+
+  <section id="screen-swipe" class="screen">
+    <div class="empty"><h2>Loading…</h2></div>
+  </section>
+
+  <section id="screen-import" class="screen">
+    <div class="import-wrap">
+      <h2>Import your IMDb ratings</h2>
+      <p class="muted">On IMDb: <b>Your Ratings</b> → ⋯ menu → <b>Export</b>. You'll get a CSV file — drop it below.</p>
+      <div id="dropzone" class="dropzone">
+        <div class="dz-icon">📥</div>
+        <div>Tap to choose your <b>ratings.csv</b><br /><span class="muted">or drag &amp; drop it here</span></div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv" hidden />
+      <div id="importResult"></div>
+      <p class="muted small">Your file never leaves your device — everything is processed in your browser.</p>
+    </div>
+  </section>
+
+  <section id="screen-profile" class="screen"></section>
+</main>
+
+<nav class="tabs">
+  <button class="tab" data-screen="discover">✨<span>For You</span></button>
+  <button class="tab" data-screen="swipe">🔥<span>Swipe</span></button>
+  <button class="tab" data-screen="import">📥<span>Import</span></button>
+  <button class="tab" data-screen="profile">👤<span>Profile</span></button>
+</nav>
+
+<script src="catalog.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
