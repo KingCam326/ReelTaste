@@ -33,16 +33,19 @@ instant free site, no account needed.
   every unseen title in the bundled catalog (`catalog.js`, ~180 titles).
 - **Privacy** — your CSV never leaves the device; there is no backend.
 
-## Movie posters & synopses
+## Movie posters, synopses, trailers & content ratings
 
-Posters and synopses load automatically — the app ships with a built-in TMDB
-API key, so users never enter anything. (The key is visible in the public repo
-source; that's standard for client-side apps. If it ever gets revoked, replace
-`BUILT_IN_KEY` in `tmdb.js` — or any user can paste their own free key under
-Profile settings as an override.)
+Posters, synopses, content ratings (PG-13, R, TV-MA…), and trailers load
+automatically via TMDB — the app ships with a built-in API key, so users never
+enter anything. Each **For You** card shows its rating badge and a
+**▶ Trailer** button that plays the trailer in-app (no need to look it up).
+Cards below the fold load their posters/ratings lazily as you scroll, keeping
+usage inside TMDB's free rate limits.
+
+(If the built-in key ever gets revoked, replace `BUILT_IN_KEY` in `tmdb.js` —
+or any user can paste their own free key under Profile settings as an override.)
 
 Without a working key, cards gracefully fall back to the generated art.
-Lookups are cached on-device to respect TMDB's free rate limits.
 
 ## Files
 

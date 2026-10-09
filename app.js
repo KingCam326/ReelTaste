@@ -86,31 +86,88 @@
       e.stopPropagation();
       profile().hidden.push(b.dataset.hide); saveStore(); renderDiscover();
     });
-    if (TMDB.hasKey()) {
-      el.querySelectorAll(".card").forEach((cardEl, i) => {
-        if (i >= 15) return; // keep initial load polite to the free API
-        const r = recs[i]; if (!r) return;
-        const c = r.item;
-        TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv").then(info => {
-          if (!info || !info.poster || !cardEl.isConnected) return;
+    el.querySelectorAll("[data-trailer]").forEach(b => b.onclick = async (e) => {
+      e.stopPropagation();
+      const r = recs[+b.dataset.trailer]; if (!r) return;
+      const c = r.item, orig = b.textContent;
+      b.textContent = "…"; b.disabled = true;
+      const info = await TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv");
+      b.textContent = orig; b.disabled = false;
+      if (info && info.id) openTrailerModal(c.t, info.id, info.mediaType);
+    });
+    const enrichCard = (cardEl) => {
+      const r = recs[+cardEl.dataset.idx]; if (!r) return;
+      const c = r.item;
+      TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv").then(info => {
+        if (!info || !cardEl.isConnected) return;
+        if (info.poster) {
           const init = cardEl.querySelector(".card-initial");
-          if (!init) return;
-          const img = document.createElement("img");
-          img.className = "card-poster"; img.alt = c.t; img.src = info.poster;
-          img.onerror = () => img.remove();
-          init.replaceWith(img);
-        });
+          if (init) {
+            const img = document.createElement("img");
+            img.className = "card-poster"; img.alt = c.t; img.src = info.poster;
+            img.onerror = () => img.remove();
+            init.replaceWith(img);
+          }
+        }
+        const certEl = cardEl.querySelector(".cert");
+        if (certEl && info.certification) certEl.textContent = info.certification;
       });
+    };
+    // Lazy-enrich cards as they scroll into view: posters + content ratings,
+    // throttled naturally by scrolling so we stay inside the free rate limit.
+    const cards = el.querySelectorAll(".card[data-idx]");
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(en => {
+          if (!en.isIntersecting) return;
+          io.unobserve(en.target);
+          enrichCard(en.target);
+        });
+      }, { rootMargin: "300px" });
+      cards.forEach(cardEl => io.observe(cardEl));
+    } else {
+      cards.forEach((cardEl, i) => { if (i < 15) enrichCard(cardEl); });
     }
+  }
+  function openTrailerModal(title, tmdbId, mt) {
+    closeTrailerModal();
+    const ov = document.createElement("div");
+    ov.className = "trailer-overlay"; ov.id = "trailerOverlay";
+    ov.innerHTML = `<div class="trailer-box">
+      <div class="trailer-head"><span>${escapeHTML(title)} — Trailer</span><button class="trailer-close" aria-label="Close">✕</button></div>
+      <div class="trailer-loading muted">Loading trailer…</div>
+    </div>`;
+    ov.querySelector(".trailer-close").onclick = closeTrailerModal;
+    ov.addEventListener("click", (e) => { if (e.target === ov) closeTrailerModal(); });
+    document.body.appendChild(ov);
+    TMDB.getTrailer(tmdbId, mt).then(key => {
+      const box = ov.querySelector(".trailer-box");
+      if (!box || !box.isConnected) return;
+      const loading = box.querySelector(".trailer-loading");
+      if (key) {
+        const fr = document.createElement("iframe");
+        fr.src = "https://www.youtube.com/embed/" + key + "?autoplay=1&rel=0";
+        fr.allow = "autoplay; encrypted-media; fullscreen";
+        fr.allowFullscreen = true;
+        loading.replaceWith(fr);
+      } else {
+        loading.textContent = "No trailer found for this title.";
+      }
+    });
+  }
+  function closeTrailerModal() {
+    const ov = document.getElementById("trailerOverlay");
+    if (ov) ov.remove();
   }
   function cardHTML(r, i) {
     const c = r.item;
-    return `<div class="card" style="${artStyle(c.g, c.t)}">
+    return `<div class="card" data-idx="${i}" style="${artStyle(c.g, c.t)}">
       <div class="card-initial">${initial(c.t)}</div>
       <div class="card-body">
         <div class="card-title">${escapeHTML(c.t)}</div>
-        <div class="card-meta">${c.y} · ${c.k === "m" ? "Movie" : "TV"} · ${c.g.slice(0, 3).join(" · ")}</div>
+        <div class="card-meta"><span class="cert"></span>${c.y} · ${c.k === "m" ? "Movie" : "TV"} · ${c.g.slice(0, 3).join(" · ")}</div>
         <div class="card-why">${r.reasons.map(escapeHTML).join(" · ")}</div>
+        <button class="trailer-btn" data-trailer="${i}">▶ Trailer</button>
       </div>
       <div class="match">${r.match}<span>%</span></div>
       <button class="hide" data-hide="${makeKey(c.t, c.y)}" title="Hide">✕</button>

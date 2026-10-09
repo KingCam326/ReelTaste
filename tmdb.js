@@ -40,29 +40,72 @@ const TMDB = (function () {
   async function lookup(title, year, imdbId, mediaType) {
     const ck = "q|" + title + "|" + (year || "") + "|" + (mediaType || "");
     if (ck in cache) return cache[ck];
-    let best = null;
+    let best = null, mt = mediaType === "tv" ? "tv" : "movie";
     try {
       if (imdbId) {
         const f = await api("/find/" + imdbId + "?external_source=imdb_id");
-        const arr = (f.movie_results || []).concat(f.tv_results || []);
-        if (arr.length) best = arr[0];
+        if (f.movie_results && f.movie_results.length) { best = f.movie_results[0]; mt = "movie"; }
+        else if (f.tv_results && f.tv_results.length) { best = f.tv_results[0]; mt = "tv"; }
       }
       if (!best) {
-        const mt = mediaType === "tv" ? "tv" : "movie";
         const yq = year ? (mt === "tv" ? "&first_air_date_year=" + year : "&year=" + year) : "";
         const s = await api("/search/" + mt + "?query=" + encodeURIComponent(title) + yq);
         const res = s.results || [];
         best = res.find(r => r.poster_path) || res[0] || null;
       }
     } catch (e) { /* offline / bad key / rate limit: fall back to generated art */ }
-    const out = best ? {
-      poster: best.poster_path ? IMG + "w500" + best.poster_path : null,
-      overview: best.overview || ""
-    } : null;
+    let out = null;
+    if (best) {
+      out = {
+        id: best.id, mediaType: mt,
+        poster: best.poster_path ? IMG + "w500" + best.poster_path : null,
+        overview: best.overview || "",
+        certification: await getCertification(best.id, mt)
+      };
+    }
     cache[ck] = out;
     saveCache();
     return out;
   }
 
-  return { getKey, setKey, userKey, lookup, hasKey: function () { return true; } };
+  /* US content rating: "PG-13", "R", "TV-MA", ... ("" when unknown) */
+  async function getCertification(tmdbId, mt) {
+    const ck = "cert|" + mt + "|" + tmdbId;
+    if (ck in cache) return cache[ck];
+    let cert = "";
+    try {
+      if (mt === "tv") {
+        const c = await api("/tv/" + tmdbId + "/content_ratings");
+        const us = (c.results || []).find(r => r.iso_3166_1 === "US");
+        cert = us ? (us.rating || "") : "";
+      } else {
+        const r = await api("/movie/" + tmdbId + "/release_dates");
+        const us = (r.results || []).find(x => x.iso_3166_1 === "US");
+        const rel = us ? (us.release_dates || []).find(d => d.certification) : null;
+        cert = rel ? rel.certification : "";
+      }
+    } catch (e) {}
+    cache[ck] = cert;
+    saveCache();
+    return cert;
+  }
+
+  /* YouTube trailer key, or null. */
+  async function getTrailer(tmdbId, mt) {
+    const ck = "videos|" + mt + "|" + tmdbId;
+    if (ck in cache) return cache[ck];
+    let key = null;
+    try {
+      const v = await api("/" + mt + "/" + tmdbId + "/videos");
+      const res = v.results || [];
+      const t = res.find(r => r.site === "YouTube" && r.type === "Trailer") ||
+                res.find(r => r.site === "YouTube");
+      key = t ? t.key : null;
+    } catch (e) {}
+    cache[ck] = key;
+    saveCache();
+    return key;
+  }
+
+  return { getKey, setKey, userKey, lookup, getTrailer, hasKey: function () { return true; } };
 })();
