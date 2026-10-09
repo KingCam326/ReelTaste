@@ -26,7 +26,8 @@ instant free site, no account needed.
 - **Profiles** — create a username; ratings, imports, and hidden titles are saved
   per profile in the browser's `localStorage`.
 - **IMDb import** — parses the official IMDb ratings CSV export client-side.
-- **Swipe** — ♥ = liked (8/10), ✕ = disliked (3/10). Drag cards or tap the buttons.
+- **Swipe** — ♥ = liked (8/10), ✕ = disliked (3/10), ? or swipe up = haven't seen
+  (skipped without rating; stays eligible for recommendations).
 - **Recommendations** — content-based engine (`engine.js`): per-genre and
   per-director average ratings (with shrinkage toward your overall mean) score
   every unseen title in the bundled catalog (`catalog.js`, ~180 titles).

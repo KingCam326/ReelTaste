@@ -27,11 +27,21 @@
     const p = profile();
     return p ? Object.values(p.ratings) : [];
   }
-  function seenKeys() {
+  function baseSeenKeys() {
     const p = profile();
     if (!p) return new Set();
     const s = new Set(Object.keys(p.ratings));
     (p.hidden || []).forEach(k => s.add(k));
+    return s;
+  }
+  // Recommendations: rated/hidden titles are out, but "haven't seen"
+  // titles stay eligible — they're exactly what recommendations are for.
+  function recSeenKeys() { return baseSeenKeys(); }
+  // Swipe deck: also exclude "haven't seen" so skipped titles don't loop.
+  function deckSeenKeys() {
+    const s = baseSeenKeys();
+    const p = profile();
+    if (p) (p.unseen || []).forEach(k => s.add(k));
     return s;
   }
 
@@ -65,7 +75,7 @@
     if (!p) { el.innerHTML = emptyProfileHTML(); bindEmpty(el); return; }
     if (!list.length) { el.innerHTML = emptyRatingsHTML(); bindEmpty(el); return; }
     const prof = buildProfile(list);
-    const recs = recommend(prof, [...seenKeys()], CATALOG, { limit: 60, type: discoverFilter });
+    const recs = recommend(prof, [...recSeenKeys()], CATALOG, { limit: 60, type: discoverFilter });
     const chips = [["all", "All"], ["movie", "Movies"], ["tv", "TV Shows"]]
       .map(([v, l]) => `<button class="chip${discoverFilter === v ? " on" : ""}" data-f="${v}">${l}</button>`).join("");
     el.innerHTML = `
@@ -106,7 +116,7 @@
   /* ---------------- swipe ---------------- */
   let deck = [], deckIdx = 0, undoStack = [];
   function buildDeck() {
-    const seen = seenKeys();
+    const seen = deckSeenKeys();
     deck = CATALOG.filter(c => !seen.has(makeKey(c.t, c.y)));
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -131,29 +141,42 @@
       <div class="swipe-top muted">${deck.length - deckIdx} left · ${n} rated</div>
       <div class="deck"><div class="swipe-card" id="swipeCard" style="${artStyle(c.g, c.t)}">
         <div class="swipe-initial">${initial(c.t)}</div>
-        <div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div>
+        <div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="stamp unseen">UNSEEN</div>
         <div class="swipe-info"><div class="swipe-title">${escapeHTML(c.t)}</div>
         <div class="swipe-meta">${c.y} · ${c.k === "m" ? "Movie" : "TV"} · ${c.g.slice(0, 3).join(" · ")}</div></div>
       </div></div>
       <div class="swipe-btns">
         <button class="sbtn nope" id="btnNope" aria-label="Dislike">✕</button>
         <button class="sbtn undo" id="btnUndo" aria-label="Undo" ${undoStack.length ? "" : "disabled"}>↩</button>
+        <button class="sbtn unseen" id="btnUnseen" aria-label="Haven't seen">?</button>
         <button class="sbtn like" id="btnLike" aria-label="Like">♥</button>
-      </div>`;
+      </div>
+      <div class="swipe-hint muted">drag &larr; nope &nbsp;·&nbsp; drag &uarr; haven't seen &nbsp;·&nbsp; drag &rarr; like</div>`;
     const card = document.getElementById("swipeCard");
     document.getElementById("btnNope").onclick = () => rate(DISLIKE);
     document.getElementById("btnLike").onclick = () => rate(LIKE);
+    document.getElementById("btnUnseen").onclick = () => markUnseen();
     document.getElementById("btnUndo").onclick = undo;
     enableDrag(card);
   }
   function rate(v) {
     const c = deck[deckIdx];
     const p = profile();
-    undoStack.push({ key: makeKey(c.t, c.y), prev: p.ratings[makeKey(c.t, c.y)] || null });
-    p.ratings[makeKey(c.t, c.y)] = {
-      key: makeKey(c.t, c.y), title: c.t, year: c.y,
+    const key = makeKey(c.t, c.y);
+    undoStack.push({ kind: "rating", key, prev: p.ratings[key] || null });
+    p.ratings[key] = {
+      key, title: c.t, year: c.y,
       type: c.k === "m" ? "movie" : "tv", rating: v, genres: c.g, directors: c.d ? [c.d] : []
     };
+    saveStore(); deckIdx++;
+    renderSwipe();
+  }
+  function markUnseen() {
+    const c = deck[deckIdx];
+    const p = profile();
+    const key = makeKey(c.t, c.y);
+    p.unseen = p.unseen || [];
+    if (!p.unseen.includes(key)) { p.unseen.push(key); undoStack.push({ kind: "unseen", key }); }
     saveStore(); deckIdx++;
     renderSwipe();
   }
@@ -161,27 +184,32 @@
     const last = undoStack.pop();
     if (!last) return;
     const p = profile();
-    if (last.prev) p.ratings[last.key] = last.prev; else delete p.ratings[last.key];
+    if (last.kind === "unseen") {
+      p.unseen = (p.unseen || []).filter(k => k !== last.key);
+    } else if (last.prev) p.ratings[last.key] = last.prev; else delete p.ratings[last.key];
     saveStore(); deckIdx = Math.max(0, deckIdx - 1);
     renderSwipe();
   }
   function enableDrag(card) {
-    let sx = 0, dx = 0, dragging = false;
-    const like = card.querySelector(".stamp.like"), nope = card.querySelector(".stamp.nope");
-    card.addEventListener("pointerdown", e => { dragging = true; sx = e.clientX; card.setPointerCapture(e.pointerId); });
+    let sx = 0, sy = 0, dx = 0, dy = 0, dragging = false;
+    const like = card.querySelector(".stamp.like"), nope = card.querySelector(".stamp.nope"),
+          unseen = card.querySelector(".stamp.unseen");
+    card.addEventListener("pointerdown", e => { dragging = true; sx = e.clientX; sy = e.clientY; card.setPointerCapture(e.pointerId); });
     card.addEventListener("pointermove", e => {
       if (!dragging) return;
-      dx = e.clientX - sx;
-      card.style.transform = `translateX(${dx}px) rotate(${dx / 12}deg)`;
-      like.style.opacity = dx > 40 ? Math.min(1, dx / 120) : 0;
-      nope.style.opacity = dx < -40 ? Math.min(1, -dx / 120) : 0;
+      dx = e.clientX - sx; dy = e.clientY - sy;
+      card.style.transform = `translate(${dx}px,${dy}px) rotate(${dx / 12}deg)`;
+      like.style.opacity = dx > 40 && dx > -dy ? Math.min(1, dx / 120) : 0;
+      nope.style.opacity = dx < -40 && -dx > -dy ? Math.min(1, -dx / 120) : 0;
+      unseen.style.opacity = dy < -40 && -dy > Math.abs(dx) ? Math.min(1, -dy / 120) : 0;
     });
     const end = () => {
       if (!dragging) return; dragging = false;
-      if (dx > 90) rate(LIKE);
+      if (dy < -90 && -dy > Math.abs(dx)) markUnseen();
+      else if (dx > 90) rate(LIKE);
       else if (dx < -90) rate(DISLIKE);
-      else { card.style.transform = ""; like.style.opacity = 0; nope.style.opacity = 0; }
-      dx = 0;
+      else { card.style.transform = ""; like.style.opacity = 0; nope.style.opacity = 0; unseen.style.opacity = 0; }
+      dx = 0; dy = 0;
     };
     card.addEventListener("pointerup", end);
     card.addEventListener("pointercancel", end);
