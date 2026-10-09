@@ -33,6 +33,20 @@ instant free site, no account needed.
   every unseen title in the bundled catalog (`catalog.js`, ~180 titles).
 - **Privacy** — your CSV never leaves the device; there is no backend.
 
+## Movie posters & synopses (optional, free)
+
+IMDb doesn't offer a public API, so the app uses
+[TMDB](https://www.themoviedb.org) (free) for posters and synopses:
+
+1. Create a free account at themoviedb.org.
+2. Go to **Settings → API** and copy your **API Key** (v3 auth).
+3. In the app, open **Profile**, paste the key, tap **Save key**.
+
+Cards will then show real posters and synopses. Without a key, the app uses
+its built-in generated card art. Lookups are cached on-device to respect
+TMDB's free rate limits. Each user needs their own key — keys are stored only
+in that browser's localStorage, never sent anywhere except TMDB's API.
+
 ## Files
 
 | File | Purpose |

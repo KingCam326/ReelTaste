@@ -86,6 +86,22 @@
       e.stopPropagation();
       profile().hidden.push(b.dataset.hide); saveStore(); renderDiscover();
     });
+    if (TMDB.hasKey()) {
+      el.querySelectorAll(".card").forEach((cardEl, i) => {
+        if (i >= 15) return; // keep initial load polite to the free API
+        const r = recs[i]; if (!r) return;
+        const c = r.item;
+        TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv").then(info => {
+          if (!info || !info.poster || !cardEl.isConnected) return;
+          const init = cardEl.querySelector(".card-initial");
+          if (!init) return;
+          const img = document.createElement("img");
+          img.className = "card-poster"; img.alt = c.t; img.src = info.poster;
+          img.onerror = () => img.remove();
+          init.replaceWith(img);
+        });
+      });
+    }
   }
   function cardHTML(r, i) {
     const c = r.item;
@@ -158,6 +174,30 @@
     document.getElementById("btnUnseen").onclick = () => markUnseen();
     document.getElementById("btnUndo").onclick = undo;
     enableDrag(card);
+    enrichSwipeCard(card, c);
+  }
+  /* Swap in a real poster + synopsis when a TMDB key is configured. */
+  function enrichSwipeCard(card, c) {
+    if (!TMDB.hasKey()) return;
+    TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv").then(info => {
+      if (!info || !card.isConnected) return;
+      if (info.poster) {
+        const init = card.querySelector(".swipe-initial");
+        const img = document.createElement("img");
+        img.className = "poster"; img.alt = c.t; img.src = info.poster;
+        img.onerror = () => img.remove();
+        if (init) init.replaceWith(img); else card.prepend(img);
+      }
+      if (info.overview) {
+        const infoBox = card.querySelector(".swipe-info");
+        if (infoBox && !infoBox.querySelector(".swipe-overview")) {
+          const ov = document.createElement("div");
+          ov.className = "swipe-overview";
+          ov.textContent = info.overview;
+          infoBox.appendChild(ov);
+        }
+      }
+    });
   }
   function rate(v) {
     const c = deck[deckIdx];
@@ -267,12 +307,23 @@
       <div class="row"><input id="newName" placeholder="New username" maxlength="24" />
       <button class="btn primary" id="createBtn">Create</button></div>
       ${stats}
+      <h3>Posters &amp; synopses (optional)</h3>
+      <p class="muted small">Paste a free TMDB API key to show real posters and synopses on cards. Get one at <b>themoviedb.org/settings/api</b> (free account, takes ~2 minutes).</p>
+      <div class="row"><input id="tmdbKey" placeholder="TMDB API key" maxlength="64" value="${escapeHTML(TMDB.getKey())}" />
+      <button class="btn sm primary" id="saveKeyBtn">Save key</button></div>
+      <div id="keyMsg" class="muted small"></div>
       <h3>Data</h3>
       <div class="row"><button class="btn sm" id="exportBtn">Export ratings (JSON)</button>
       <button class="btn sm danger" id="wipeBtn">Clear this profile</button></div>`;
     document.getElementById("createBtn").onclick = () => {
       const n = document.getElementById("newName").value;
       if (ensureProfile(n)) { updateHeader(); renderProfile(); } else alert("Enter a username.");
+    };
+    document.getElementById("saveKeyBtn").onclick = () => {
+      TMDB.setKey(document.getElementById("tmdbKey").value);
+      document.getElementById("keyMsg").textContent = TMDB.hasKey()
+        ? "Saved ✓ — posters will load on cards from here on."
+        : "Key cleared — back to generated card art.";
     };
     el.querySelectorAll("[data-switch]").forEach(b => b.onclick = () => { store.active = b.dataset.switch; saveStore(); updateHeader(); buildDeck(); renderProfile(); });
     el.querySelectorAll("[data-del]").forEach(b => b.onclick = () => {
