@@ -33,7 +33,19 @@ instant free site, no account needed.
   every unseen title in the bundled catalog (`catalog.js`, ~180 titles).
 - **Privacy** — your CSV never leaves the device; there is no backend.
 
-## Movie posters, synopses, trailers & content ratings
+## Features
+
+- **For You** — ranked recommendations with match %, posters, content ratings,
+  and in-app trailers. Filter by type (All / Movies / TV Shows) and by one or
+  more genres via the chip rows. Tap ♥ on any card to save it to Interested.
+- **Swipe** — Tinder-style rating deck (♥ = liked, ✕ = disliked, ? / swipe up =
+  haven't seen). Same type + genre filters apply when you're hunting for
+  something specific.
+- **Interested** — your saved list. Revisit titles, watch trailers, remove with ✕.
+- **Import** — drop in your IMDb `ratings.csv`.
+- **Profile** — manage usernames, export data.
+
+### Posters, trailers & ratings
 
 Posters, synopses, content ratings (PG-13, R, TV-MA…), and trailers load
 automatically via TMDB — the app ships with a built-in API key, so users never

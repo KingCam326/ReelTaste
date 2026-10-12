@@ -8,7 +8,15 @@
   function loadStore() {
     try {
       const s = JSON.parse(localStorage.getItem(LS_KEY));
-      if (s && s.profiles) return s;
+      if (s && s.profiles) {
+        // migrate older profiles: ensure newer array fields exist
+        Object.values(s.profiles).forEach(p => {
+          if (!Array.isArray(p.unseen)) p.unseen = [];
+          if (!Array.isArray(p.interested)) p.interested = [];
+          if (!Array.isArray(p.hidden)) p.hidden = [];
+        });
+        return s;
+      }
     } catch (e) {}
     return { profiles: {}, active: null };
   }
@@ -18,7 +26,7 @@
   function ensureProfile(name) {
     name = (name || "").trim();
     if (!name) return null;
-    if (!store.profiles[name]) store.profiles[name] = { ratings: {}, hidden: [], created: Date.now() };
+    if (!store.profiles[name]) store.profiles[name] = { ratings: {}, hidden: [], unseen: [], interested: [], created: Date.now() };
     store.active = name;
     saveStore();
     return store.profiles[name];
@@ -56,13 +64,63 @@
   }
   function initial(title) { return (title || "?").trim().charAt(0).toUpperCase(); }
 
+  /* ---------------- filters ---------------- */
+  const GENRES = [...new Set(CATALOG.flatMap(c => c.g))].sort();
+  let discoverGenres = new Set();
+  let swipeGenres = new Set();
+  let swipeFilter = "all";
+  function filteredCatalog(typeFilter, genreSet) {
+    return CATALOG.filter(c => {
+      const typeOk = typeFilter === "all" || (typeFilter === "movie" ? c.k === "m" : c.k === "tv");
+      const genreOk = !genreSet.size || c.g.some(g => genreSet.has(g));
+      return typeOk && genreOk;
+    });
+  }
+  function genreChipsHTML(selected) {
+    const clear = selected.size ? `<button class="chip clear" data-genreclear title="Clear genres">✕</button>` : "";
+    return `<span class="chip-label">Genres:</span>` + clear + GENRES.map(g =>
+      `<button class="chip${selected.has(g) ? " on" : ""}" data-genre="${escapeHTML(g)}">${escapeHTML(g)}</button>`
+    ).join("");
+  }
+  function bindGenreChips(el, selected, onChange) {
+    el.querySelectorAll("[data-genre]").forEach(ch => ch.onclick = () => {
+      const g = ch.dataset.genre;
+      if (selected.has(g)) selected.delete(g); else selected.add(g);
+      onChange();
+    });
+    const clr = el.querySelector("[data-genreclear]");
+    if (clr) clr.onclick = () => { selected.clear(); onChange(); };
+  }
+  function isInterested(c) {
+    const p = profile();
+    return !!p && (p.interested || []).includes(makeKey(c.t, c.y));
+  }
+  // Poster + content-rating enrichment for a rendered card element.
+  function enrichCardEl(cardEl, c) {
+    TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv").then(info => {
+      if (!info || !cardEl.isConnected) return;
+      if (info.poster) {
+        const init = cardEl.querySelector(".card-initial");
+        if (init) {
+          const img = document.createElement("img");
+          img.className = "card-poster"; img.alt = c.t; img.src = info.poster;
+          img.onerror = () => img.remove();
+          init.replaceWith(img);
+        }
+      }
+      const certEl = cardEl.querySelector(".cert");
+      if (certEl && info.certification) certEl.textContent = info.certification;
+    });
+  }
+
   /* ---------------- router ---------------- */
-  const screens = ["discover", "swipe", "import", "profile"];
+  const screens = ["discover", "swipe", "import", "interested", "profile"];
   function go(name) {
     screens.forEach(s => document.getElementById("screen-" + s).classList.toggle("active", s === name));
     document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.screen === name));
     if (name === "discover") renderDiscover();
     if (name === "swipe") renderSwipe();
+    if (name === "interested") renderInterested();
     if (name === "profile") renderProfile();
     window.scrollTo(0, 0);
   }
@@ -75,16 +133,33 @@
     if (!p) { el.innerHTML = emptyProfileHTML(); bindEmpty(el); return; }
     if (!list.length) { el.innerHTML = emptyRatingsHTML(); bindEmpty(el); return; }
     const prof = buildProfile(list);
-    const recs = recommend(prof, [...recSeenKeys()], CATALOG, { limit: 60, type: discoverFilter });
+    const pool = filteredCatalog(discoverFilter, discoverGenres);
+    const recs = recommend(prof, [...recSeenKeys()], pool, { limit: 60 });
     const chips = [["all", "All"], ["movie", "Movies"], ["tv", "TV Shows"]]
       .map(([v, l]) => `<button class="chip${discoverFilter === v ? " on" : ""}" data-f="${v}">${l}</button>`).join("");
+    const emptyMsg = (discoverGenres.size || discoverFilter !== "all")
+      ? `<p class="muted">No titles match those filters — try fewer genres or another type.</p>`
+      : `<p class="muted">No more unseen titles in the catalog. Swipe for more!</p>`;
     el.innerHTML = `
       <div class="chips">${chips}</div>
-      <div class="rec-list">${recs.map((r, i) => cardHTML(r, i)).join("") || `<p class="muted">No more unseen titles in the catalog. Swipe for more!</p>`}</div>`;
-    el.querySelectorAll(".chip").forEach(c => c.onclick = () => { discoverFilter = c.dataset.f; renderDiscover(); });
+      <div class="chips genres">${genreChipsHTML(discoverGenres)}</div>
+      <div class="rec-list">${recs.map((r, i) => cardHTML(r, i)).join("") || emptyMsg}</div>`;
+    el.querySelectorAll("[data-f]").forEach(c => c.onclick = () => { discoverFilter = c.dataset.f; renderDiscover(); });
+    bindGenreChips(el, discoverGenres, renderDiscover);
     el.querySelectorAll("[data-hide]").forEach(b => b.onclick = (e) => {
       e.stopPropagation();
       profile().hidden.push(b.dataset.hide); saveStore(); renderDiscover();
+    });
+    el.querySelectorAll("[data-heart]").forEach(b => b.onclick = (e) => {
+      e.stopPropagation();
+      const r = recs[+b.dataset.heart]; if (!r) return;
+      const p = profile(); if (!p) return;
+      p.interested = p.interested || [];
+      const key = makeKey(r.item.t, r.item.y);
+      const ix = p.interested.indexOf(key);
+      if (ix >= 0) p.interested.splice(ix, 1); else p.interested.push(key);
+      saveStore();
+      b.classList.toggle("on", ix < 0);
     });
     el.querySelectorAll("[data-trailer]").forEach(b => b.onclick = async (e) => {
       e.stopPropagation();
@@ -96,22 +171,8 @@
       if (info && info.id) openTrailerModal(c.t, info.id, info.mediaType);
     });
     const enrichCard = (cardEl) => {
-      const r = recs[+cardEl.dataset.idx]; if (!r) return;
-      const c = r.item;
-      TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv").then(info => {
-        if (!info || !cardEl.isConnected) return;
-        if (info.poster) {
-          const init = cardEl.querySelector(".card-initial");
-          if (init) {
-            const img = document.createElement("img");
-            img.className = "card-poster"; img.alt = c.t; img.src = info.poster;
-            img.onerror = () => img.remove();
-            init.replaceWith(img);
-          }
-        }
-        const certEl = cardEl.querySelector(".cert");
-        if (certEl && info.certification) certEl.textContent = info.certification;
-      });
+      const r = recs[+cardEl.dataset.idx];
+      if (r) enrichCardEl(cardEl, r.item);
     };
     // Lazy-enrich cards as they scroll into view: posters + content ratings,
     // throttled naturally by scrolling so we stay inside the free rate limit.
@@ -159,6 +220,54 @@
     const ov = document.getElementById("trailerOverlay");
     if (ov) ov.remove();
   }
+
+  /* ---------------- interested ---------------- */
+  function renderInterested() {
+    const el = document.getElementById("screen-interested");
+    const p = profile();
+    if (!p) { el.innerHTML = emptyProfileHTML(); bindEmpty(el); return; }
+    const items = (p.interested || [])
+      .map(k => CATALOG.find(c => makeKey(c.t, c.y) === k))
+      .filter(Boolean);
+    if (!items.length) {
+      el.innerHTML = `<div class="empty"><h2>Nothing saved yet</h2>
+        <p>Tap the ♥ on any For You card to save it here.</p>
+        <button class="btn primary" data-go="discover">Find something</button></div>`;
+      bindEmpty(el); return;
+    }
+    el.innerHTML = `<h2 class="screen-title">Interested ♥</h2>
+      <div class="rec-list">${items.map(interestedCardHTML).join("")}</div>`;
+    el.querySelectorAll("[data-unheart]").forEach(b => b.onclick = (e) => {
+      e.stopPropagation();
+      const p2 = profile(); if (!p2) return;
+      p2.interested = (p2.interested || []).filter(k => k !== b.dataset.unheart);
+      saveStore(); renderInterested();
+    });
+    el.querySelectorAll("[data-itrailer]").forEach(b => b.onclick = async (e) => {
+      e.stopPropagation();
+      const c = CATALOG.find(x => makeKey(x.t, x.y) === b.dataset.itrailer); if (!c) return;
+      const orig = b.textContent; b.textContent = "…"; b.disabled = true;
+      const info = await TMDB.lookup(c.t, c.y, null, c.k === "m" ? "movie" : "tv");
+      b.textContent = orig; b.disabled = false;
+      if (info && info.id) openTrailerModal(c.t, info.id, info.mediaType);
+    });
+    el.querySelectorAll(".card[data-tkey]").forEach(cardEl => {
+      const c = CATALOG.find(x => makeKey(x.t, x.y) === cardEl.dataset.tkey);
+      if (c) enrichCardEl(cardEl, c);
+    });
+  }
+  function interestedCardHTML(c) {
+    const key = makeKey(c.t, c.y);
+    return `<div class="card" data-tkey="${key}" style="${artStyle(c.g, c.t)}">
+      <div class="card-initial">${initial(c.t)}</div>
+      <div class="card-body">
+        <div class="card-title">${escapeHTML(c.t)}</div>
+        <div class="card-meta"><span class="cert"></span>${c.y} · ${c.k === "m" ? "Movie" : "TV"} · ${c.g.slice(0, 3).join(" · ")}</div>
+        <div class="card-actions"><button class="trailer-btn" data-itrailer="${key}">▶ Trailer</button></div>
+      </div>
+      <button class="hide" data-unheart="${key}" title="Remove">✕</button>
+    </div>`;
+  }
   function cardHTML(r, i) {
     const c = r.item;
     return `<div class="card" data-idx="${i}" style="${artStyle(c.g, c.t)}">
@@ -167,7 +276,10 @@
         <div class="card-title">${escapeHTML(c.t)}</div>
         <div class="card-meta"><span class="cert"></span>${c.y} · ${c.k === "m" ? "Movie" : "TV"} · ${c.g.slice(0, 3).join(" · ")}</div>
         <div class="card-why">${r.reasons.map(escapeHTML).join(" · ")}</div>
-        <button class="trailer-btn" data-trailer="${i}">▶ Trailer</button>
+        <div class="card-actions">
+          <button class="trailer-btn" data-trailer="${i}">▶ Trailer</button>
+          <button class="heart-btn${isInterested(c) ? " on" : ""}" data-heart="${i}" title="Save to Interested">♥</button>
+        </div>
       </div>
       <div class="match">${r.match}<span>%</span></div>
       <button class="hide" data-hide="${makeKey(c.t, c.y)}" title="Hide">✕</button>
@@ -190,7 +302,7 @@
   let deck = [], deckIdx = 0, undoStack = [];
   function buildDeck() {
     const seen = deckSeenKeys();
-    deck = CATALOG.filter(c => !seen.has(makeKey(c.t, c.y)));
+    deck = filteredCatalog(swipeFilter, swipeGenres).filter(c => !seen.has(makeKey(c.t, c.y)));
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -204,14 +316,24 @@
     if (!p) { el.innerHTML = emptyProfileHTML(); bindEmpty(el); return; }
     if (!deck.length || deckIdx >= deck.length) buildDeck();
     if (!deck.length) {
-      el.innerHTML = `<div class="empty"><h2>All caught up 🎉</h2><p>You've rated everything in the catalog. Check your recommendations!</p>
-        <button class="btn primary" data-go="discover">See recommendations</button></div>`;
-      bindEmpty(el); return;
+      const filtered = swipeFilter !== "all" || swipeGenres.size > 0;
+      el.innerHTML = `<div class="empty"><h2>${filtered ? "No matches" : "All caught up 🎉"}</h2>
+        <p>${filtered ? "No titles match those filters — try fewer genres or another type." : "You've rated everything in the catalog. Check your recommendations!"}</p>
+        ${filtered ? `<button class="btn primary" id="clearSwipeFilters">Clear filters</button>`
+                    : `<button class="btn primary" data-go="discover">See recommendations</button>`}</div>`;
+      bindEmpty(el);
+      const clr = document.getElementById("clearSwipeFilters");
+      if (clr) clr.onclick = () => { swipeFilter = "all"; swipeGenres.clear(); buildDeck(); renderSwipe(); };
+      return;
     }
     const c = deck[deckIdx];
     const n = ratingsList().length;
+    const stypeChips = [["all", "All"], ["movie", "Movies"], ["tv", "TV Shows"]]
+      .map(([v, l]) => `<button class="chip${swipeFilter === v ? " on" : ""}" data-stype="${v}">${l}</button>`).join("");
     el.innerHTML = `
       <div class="swipe-top muted">${deck.length - deckIdx} left · ${n} rated</div>
+      <div class="chips">${stypeChips}</div>
+      <div class="chips genres">${genreChipsHTML(swipeGenres)}</div>
       <div class="deck"><div class="swipe-card" id="swipeCard" style="${artStyle(c.g, c.t)}">
         <div class="swipe-initial">${initial(c.t)}</div>
         <div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="stamp unseen">UNSEEN</div>
@@ -226,6 +348,8 @@
       </div>
       <div class="swipe-hint muted">drag &larr; nope &nbsp;·&nbsp; &uarr; haven't seen &nbsp;·&nbsp; &rarr; like &nbsp;·&nbsp; tap synopsis to expand</div>`;
     const card = document.getElementById("swipeCard");
+    el.querySelectorAll("[data-stype]").forEach(ch => ch.onclick = () => { swipeFilter = ch.dataset.stype; buildDeck(); renderSwipe(); });
+    bindGenreChips(el, swipeGenres, () => { buildDeck(); renderSwipe(); });
     document.getElementById("btnNope").onclick = () => rate(DISLIKE);
     document.getElementById("btnLike").onclick = () => rate(LIKE);
     document.getElementById("btnUnseen").onclick = () => markUnseen();

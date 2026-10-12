@@ -60,6 +60,18 @@ h3 { font-size: 15px; margin: 18px 0 8px; color: var(--muted); text-transform: u
   border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer;
 }
 .chip.on { background: var(--text); color: #111; border-color: var(--text); font-weight: 600; }
+.chips.genres { flex-wrap: nowrap; overflow-x: auto; margin: 0 0 12px; padding-bottom: 4px; }
+.chip-label { font-size: 12px; color: var(--muted); flex: 0 0 auto; }
+.chip.clear { padding: 7px 10px; }
+.screen-title { font-size: 20px; margin: 4px 0 12px; }
+.card-actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+.card-actions .trailer-btn { margin-top: 0; }
+.heart-btn {
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15);
+  color: rgba(255,255,255,.45); border-radius: 999px; width: 36px; height: 30px;
+  font-size: 15px; cursor: pointer; line-height: 1;
+}
+.heart-btn.on { color: #ff5b7f; border-color: #ff5b7f; }
 
 /* recommendation cards */
 .rec-list { display: flex; flex-direction: column; gap: 10px; }
