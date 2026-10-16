@@ -8,9 +8,32 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<div id="modePicker" class="mode-overlay" hidden>
+  <div class="mode-box">
+    <div class="mode-logo">🎬 ReelTaste</div>
+    <h2>What are we rating today?</h2>
+    <div class="mode-choices">
+      <button class="mode-choice" data-modepick="movies">
+        <span class="mode-emoji">🎬</span>
+        <b>Movies &amp; TV</b>
+        <span class="muted small">Posters, trailers &amp; picks via TMDB</span>
+      </button>
+      <button class="mode-choice" data-modepick="games">
+        <span class="mode-emoji">🎮</span>
+        <b>Video Games</b>
+        <span class="muted small">Covers, trailers &amp; picks via IGDB</span>
+      </button>
+    </div>
+    <p class="muted small">You can switch anytime with the 🎬/🎮 button up top.</p>
+  </div>
+</div>
+
 <header>
   <div class="logo">🎬 ReelTaste</div>
-  <button id="profileChip" class="chipbtn">👤 Guest</button>
+  <div class="header-btns">
+    <button id="modeToggle" class="chipbtn" title="Switch mode">🎬</button>
+    <button id="profileChip" class="chipbtn">👤 Guest</button>
+  </div>
 </header>
 
 <main>
@@ -23,7 +46,7 @@
   <section id="screen-interested" class="screen"></section>
 
   <section id="screen-import" class="screen">
-    <div class="import-wrap">
+    <div id="importMovies" class="import-wrap">
       <h2>Import your IMDb ratings</h2>
       <p class="muted">On IMDb: <b>Your Ratings</b> → ⋯ menu → <b>Export</b>. You'll get a CSV file — drop it below.</p>
       <div id="dropzone" class="dropzone">
@@ -33,6 +56,11 @@
       <input type="file" id="fileInput" accept=".csv" hidden />
       <div id="importResult"></div>
       <p class="muted small">Your file never leaves your device — everything is processed in your browser.</p>
+    </div>
+    <div id="importGames" class="import-wrap" hidden>
+      <h2>Teach me your game taste</h2>
+      <p class="muted">There's no IMDb-style export for games — swipe through titles instead and I'll learn what you like.</p>
+      <button class="btn primary" data-go="swipe">Start swiping</button>
     </div>
   </section>
 
@@ -48,8 +76,10 @@
 </nav>
 
 <script src="catalog.js"></script>
+<script src="games-catalog.js"></script>
 <script src="engine.js"></script>
 <script src="tmdb.js"></script>
+<script src="igdb.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

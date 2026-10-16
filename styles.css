@@ -204,3 +204,22 @@ h3 { font-size: 15px; margin: 18px 0 8px; color: var(--muted); text-transform: u
 
 .empty { text-align: center; padding: 60px 20px; }
 .empty .row { justify-content: center; margin-top: 16px; }
+
+/* mode picker + toggle */
+.header-btns { display: flex; gap: 8px; }
+.mode-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(5,5,10,.94);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.mode-overlay[hidden] { display: none; }
+.mode-box { max-width: 420px; width: 100%; text-align: center; }
+.mode-logo { font-weight: 800; font-size: 28px; letter-spacing: .5px; margin-bottom: 8px; }
+.mode-choices { display: flex; gap: 12px; margin: 20px 0 16px; }
+.mode-choice {
+  flex: 1; background: var(--panel); border: 1px solid #33334a; border-radius: 16px;
+  padding: 24px 12px; color: var(--text); cursor: pointer;
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+}
+.mode-choice:active { transform: scale(.97); border-color: var(--accent2); }
+.mode-emoji { font-size: 44px; }
