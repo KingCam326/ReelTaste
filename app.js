@@ -114,28 +114,66 @@
   let discoverGenres = new Set();
   let swipeGenres = new Set();
   let swipeFilter = "all";
-  function filteredCatalog(typeFilter, genreSet) {
+  /* Year ranges: multi-select buckets, 10 per mode, 70s → present. */
+  const YEAR_RANGES = {
+    movies: [
+      { label: "70s", min: 1970, max: 1979 },
+      { label: "80s", min: 1980, max: 1989 },
+      { label: "1990–95", min: 1990, max: 1995 },
+      { label: "1996–2000", min: 1996, max: 2000 },
+      { label: "2001–05", min: 2001, max: 2005 },
+      { label: "2006–10", min: 2006, max: 2010 },
+      { label: "2011–14", min: 2011, max: 2014 },
+      { label: "2015–18", min: 2015, max: 2018 },
+      { label: "2019–21", min: 2019, max: 2021 },
+      { label: "2022+", min: 2022, max: 2100 }
+    ],
+    games: [
+      { label: "1990–96", min: 1990, max: 1996 },
+      { label: "1997–2000", min: 1997, max: 2000 },
+      { label: "2001–04", min: 2001, max: 2004 },
+      { label: "2005–08", min: 2005, max: 2008 },
+      { label: "2009–12", min: 2009, max: 2012 },
+      { label: "2013–15", min: 2013, max: 2015 },
+      { label: "2016–17", min: 2016, max: 2017 },
+      { label: "2018–19", min: 2018, max: 2019 },
+      { label: "2020–22", min: 2020, max: 2022 },
+      { label: "2023+", min: 2023, max: 2100 }
+    ]
+  };
+  let discoverYears = new Set();
+  let swipeYears = new Set();
+  function filteredCatalog(typeFilter, genreSet, yearSet) {
+    const ranges = YEAR_RANGES[mode];
     return activeCatalog().filter(c => {
       const typeOk = typeFilter === "all" || (typeFilter === "movie" ? c.k === "m" : c.k === "tv");
       const genreOk = !genreSet.size || c.g.some(g => genreSet.has(g));
-      return typeOk && genreOk;
+      const yearOk = !yearSet.size || [...yearSet].some(i => {
+        const r = ranges[i];
+        return r && c.y >= r.min && c.y <= r.max;
+      });
+      return typeOk && genreOk && yearOk;
     });
   }
-  function genreChipsHTML(selected, all) {
-    const clear = selected.size ? `<button class="chip clear" data-genreclear title="Clear genres">✕</button>` : "";
-    return `<span class="chip-label">Genres:</span>` + clear + all.map(g =>
-      `<button class="chip${selected.has(g) ? " on" : ""}" data-genre="${escapeHTML(g)}">${escapeHTML(g)}</button>`
-    ).join("");
+  /* Multi-select chip rows: genres and year ranges share this renderer. */
+  function chipRowHTML(rowLabel, selected, items, opt) {
+    const clear = selected.size ? `<button class="chip clear" data-${opt.attr}clear title="Clear">✕</button>` : "";
+    return `<span class="chip-label">${rowLabel}:</span>` + clear + items.map((it, i) => {
+      const k = opt.key(it, i);
+      return `<button class="chip${selected.has(k) ? " on" : ""}" data-${opt.attr}="${escapeHTML(String(k))}">${escapeHTML(opt.label(it, i))}</button>`;
+    }).join("");
   }
-  function bindGenreChips(el, selected, onChange) {
-    el.querySelectorAll("[data-genre]").forEach(ch => ch.onclick = () => {
-      const g = ch.dataset.genre;
-      if (selected.has(g)) selected.delete(g); else selected.add(g);
+  function bindChipRow(el, selected, attr, onChange) {
+    el.querySelectorAll(`[data-${attr}]`).forEach(ch => ch.onclick = () => {
+      const k = attr === "year" ? +ch.dataset[attr] : ch.dataset[attr];
+      if (selected.has(k)) selected.delete(k); else selected.add(k);
       onChange();
     });
-    const clr = el.querySelector("[data-genreclear]");
+    const clr = el.querySelector(`[data-${attr}clear]`);
     if (clr) clr.onclick = () => { selected.clear(); onChange(); };
   }
+  const GENRE_OPT = { attr: "genre", key: g => g, label: g => g };
+  const YEAR_OPT = { attr: "year", key: (r, i) => i, label: r => r.label };
   function isInterested(c) {
     const d = md();
     return !!d && (d.interested || []).includes(makeKey(c.t, c.y));
@@ -196,21 +234,23 @@
     if (!d) { el.innerHTML = emptyProfileHTML(); bindEmpty(el); return; }
     if (!list.length) { el.innerHTML = emptyRatingsHTML(); bindEmpty(el); return; }
     const prof = buildProfile(list);
-    const pool = filteredCatalog(discoverFilter, discoverGenres);
+    const pool = filteredCatalog(discoverFilter, discoverGenres, discoverYears);
     const recs = recommend(prof, [...recSeenKeys()], pool, { limit: 60 });
     const typeChips = mode === "movies"
       ? `<div class="chips">${[["all", "All"], ["movie", "Movies"], ["tv", "TV Shows"]]
           .map(([v, l]) => `<button class="chip${discoverFilter === v ? " on" : ""}" data-f="${v}">${l}</button>`).join("")}</div>`
       : "";
-    const emptyMsg = (discoverGenres.size || discoverFilter !== "all")
+    const emptyMsg = (discoverGenres.size || discoverYears.size || discoverFilter !== "all")
       ? `<p class="muted">No titles match those filters — try fewer genres or another type.</p>`
       : `<p class="muted">No more unseen titles in the catalog. Swipe for more!</p>`;
     el.innerHTML = `
       ${typeChips}
-      <div class="chips genres">${genreChipsHTML(discoverGenres, genreList())}</div>
+      <div class="chips genres">${chipRowHTML("Genres", discoverGenres, genreList(), GENRE_OPT)}</div>
+      <div class="chips years">${chipRowHTML("Years", discoverYears, YEAR_RANGES[mode], YEAR_OPT)}</div>
       <div class="rec-list">${recs.map((r, i) => cardHTML(r, i)).join("") || emptyMsg}</div>`;
     el.querySelectorAll("[data-f]").forEach(c => c.onclick = () => { discoverFilter = c.dataset.f; renderDiscover(); });
-    bindGenreChips(el, discoverGenres, renderDiscover);
+    bindChipRow(el, discoverGenres, "genre", renderDiscover);
+    bindChipRow(el, discoverYears, "year", renderDiscover);
     el.querySelectorAll("[data-hide]").forEach(b => b.onclick = (e) => {
       e.stopPropagation();
       md().hidden.push(b.dataset.hide); saveStore(); renderDiscover();
@@ -380,7 +420,7 @@
   let deck = [], deckIdx = 0, undoStack = [];
   function buildDeck() {
     const seen = deckSeenKeys();
-    deck = filteredCatalog(swipeFilter, swipeGenres).filter(c => !seen.has(makeKey(c.t, c.y)));
+    deck = filteredCatalog(swipeFilter, swipeGenres, swipeYears).filter(c => !seen.has(makeKey(c.t, c.y)));
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -394,14 +434,14 @@
     if (!d) { el.innerHTML = emptyProfileHTML(); bindEmpty(el); return; }
     if (!deck.length || deckIdx >= deck.length) buildDeck();
     if (!deck.length) {
-      const filtered = swipeFilter !== "all" || swipeGenres.size > 0;
+      const filtered = swipeFilter !== "all" || swipeGenres.size > 0 || swipeYears.size > 0;
       el.innerHTML = `<div class="empty"><h2>${filtered ? "No matches" : "All caught up 🎉"}</h2>
         <p>${filtered ? "No titles match those filters — try fewer genres or another type." : "You've rated everything in the catalog. Check your recommendations!"}</p>
         ${filtered ? `<button class="btn primary" id="clearSwipeFilters">Clear filters</button>`
                     : `<button class="btn primary" data-go="discover">See recommendations</button>`}</div>`;
       bindEmpty(el);
       const clr = document.getElementById("clearSwipeFilters");
-      if (clr) clr.onclick = () => { swipeFilter = "all"; swipeGenres.clear(); buildDeck(); renderSwipe(); };
+      if (clr) clr.onclick = () => { swipeFilter = "all"; swipeGenres.clear(); swipeYears.clear(); buildDeck(); renderSwipe(); };
       return;
     }
     const c = deck[deckIdx];
@@ -413,7 +453,8 @@
     el.innerHTML = `
       <div class="swipe-top muted">${deck.length - deckIdx} left · ${n} rated</div>
       ${typeChips}
-      <div class="chips genres">${genreChipsHTML(swipeGenres, genreList())}</div>
+      <div class="chips genres">${chipRowHTML("Genres", swipeGenres, genreList(), GENRE_OPT)}</div>
+      <div class="chips years">${chipRowHTML("Years", swipeYears, YEAR_RANGES[mode], YEAR_OPT)}</div>
       <div class="deck"><div class="swipe-card" id="swipeCard" style="${artStyle(c.g, c.t)}">
         <div class="swipe-initial">${initial(c.t)}</div>
         <div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="stamp unseen">UNSEEN</div>
@@ -429,7 +470,8 @@
       <div class="swipe-hint muted">drag &larr; nope &nbsp;·&nbsp; &uarr; haven't seen &nbsp;·&nbsp; &rarr; like &nbsp;·&nbsp; tap synopsis to expand</div>`;
     const card = document.getElementById("swipeCard");
     el.querySelectorAll("[data-stype]").forEach(ch => ch.onclick = () => { swipeFilter = ch.dataset.stype; buildDeck(); renderSwipe(); });
-    bindGenreChips(el, swipeGenres, () => { buildDeck(); renderSwipe(); });
+    bindChipRow(el, swipeGenres, "genre", () => { buildDeck(); renderSwipe(); });
+    bindChipRow(el, swipeYears, "year", () => { buildDeck(); renderSwipe(); });
     document.getElementById("btnNope").onclick = () => rate(DISLIKE);
     document.getElementById("btnLike").onclick = () => rate(LIKE);
     document.getElementById("btnUnseen").onclick = () => markUnseen();
